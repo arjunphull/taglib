@@ -111,7 +111,7 @@ void inspectFile(int fileDescriptor, vector<string> &tagBuffer) {
        Consequently, the bitrate will be absurdly high.
        Flag these files by not returning length (the android media player calculates their durations correctly) */
     AudioProperties *properties = file.audioProperties();
-    if (properties->bitrate() < 1000 || properties->lengthInMilliseconds() <= 0) {
+    if (properties->bitrate() < 1000 && properties->lengthInMilliseconds() > 0) {
         info << DELIMITER << "LENGTH=" << properties->lengthInMilliseconds();
     }
     tagBuffer.push_back(info.str());
