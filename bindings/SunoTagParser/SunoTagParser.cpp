@@ -2,6 +2,7 @@
 // Created by Arjun Phull on 2021-07-05.
 //
 
+#include <unistd.h>
 #include <algorithm>
 #include <thread>
 #include <mutex>
@@ -44,10 +45,53 @@ bool stringEndsWith(string const &value, string const &ending)
     return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
 }
 
+bool isAudioFileExt(string &ext) {
+    transform(ext.begin(), ext.end(), ext.begin(), ::toupper);
+    if (ext == "MP3" ||
+        ext == "OGG" ||
+        ext == "FLAC" ||
+        ext == "MPC" ||
+        ext == "WV" ||
+        ext == "SPX" ||
+        ext == "OPUS" ||
+        ext == "TTA" ||
+        ext == "M4A" || ext == "M4R" || ext == "M4B" || ext == "M4P" || ext == "MP4" || ext == "3G2" || ext == "M4V" ||
+        ext == "WMA" || ext == "ASF" ||
+        ext == "AIF" || ext == "AIFF" || ext == "AFC" || ext == "AIFC" ||
+        ext == "WAV" ||
+        ext == "APE" ||
+        ext == "MOD" ||
+        ext == "S3M" ||
+        ext == "IT" ||
+        ext == "XM") {
+        return true;
+    }
+
+    return false;
+}
+
 void inspectFile(int fileDescriptor, vector<string> &tagBuffer) {
+    ostringstream info;
+    info << "FD=" << fileDescriptor;
+
     FileStream fileStream(dup(fileDescriptor), true);
     FileRef file(&fileStream, true, AudioProperties::ReadStyle::Accurate);
-    if (file.isNull() || !file.tag()) {
+    if (file.isNull()) {
+        // this conditional can be triggered by audio files with bad headers. If it looks like and audio file, indicate such.
+        char fdPath[256];
+        char filePath[PATH_MAX];
+        sprintf(fdPath, "/proc/self/fd/%d", fileDescriptor);
+        int numBytes = readlink(fdPath, filePath, PATH_MAX);
+        if (numBytes != -1) {
+            string filename(filePath, numBytes);
+            auto index = filename.rfind('.');
+            if(index != string::npos) {
+                string extension = filename.substr(index + 1);
+                if (isAudioFileExt(extension)) {
+                    tagBuffer.push_back(info.str());
+                }
+            }
+        }
         return;
     }
 
@@ -56,25 +100,19 @@ void inspectFile(int fileDescriptor, vector<string> &tagBuffer) {
         return;
     }
 
-    AudioProperties *properties = file.audioProperties();
-    if (properties->lengthInMilliseconds() <= 0) {
-        return;
-    }
-
-    ostringstream info;
-    info << "FD=" << fileDescriptor << DELIMITER
+    info << DELIMITER
          << "ARTIST=" << tag->artist() << DELIMITER
          << "ALBUM=" << tag->album() << DELIMITER
          << "TITLE=" << tag->title() << DELIMITER
-         << "TRACK=" << tag->track() << DELIMITER
-         << "LENGTH=" << properties->lengthInMilliseconds();
+         << "TRACK=" << tag->track();
 
     /* many mp4/m4a/m4b files do not specify duration correctly in the trak and/or mdhd boxes,
        the latter which is check by TagLib (I checked the former manually).
-       Consequently, the bitrate will be unusually high.
-       Flag these files (the android media player calculates their durations correctly) */
-    if (properties->bitrate() > 300) {
-        info << DELIMITER << "RECALCULATE_LENGTH";
+       Consequently, the bitrate will be absurdly high.
+       Flag these files by not returning length (the android media player calculates their durations correctly) */
+    AudioProperties *properties = file.audioProperties();
+    if (properties->bitrate() < 1000 || properties->lengthInMilliseconds() <= 0) {
+        info << DELIMITER << "LENGTH=" << properties->lengthInMilliseconds();
     }
     tagBuffer.push_back(info.str());
 }
