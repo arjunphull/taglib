@@ -224,7 +224,7 @@ Java_com_github_arjunphull_sunoaudiobookplayer_file_TagParser_getCoverArt(JNIEnv
 extern "C"
 JNIEXPORT jstring JNICALL
 Java_com_github_arjunphull_sunoaudiobookplayer_file_TagParser_getTagInfo(JNIEnv *env, jobject jobj, jstring args) {
-    string argString = env->GetStringUTFChars(args, nullptr);
+    auto const argString = env->GetStringUTFChars(args, static_cast<jboolean *>(0));
     string namedPipePath;
     fstream pipe;
     queue<int> fdQueue;
@@ -257,13 +257,17 @@ Java_com_github_arjunphull_sunoaudiobookplayer_file_TagParser_getTagInfo(JNIEnv 
     // parse out pipe path and dir path
     size_t pos;
     string token;
-    while ((pos = argString.find('\n')) != string::npos) {
-        token = argString.substr(0, pos);
+    string s = argString;
+    while ((pos = s.find('\n')) != string::npos) {
+        token = s.substr(0, pos);
         if (token.rfind("pipe=", 0) == 0) {
             namedPipePath = token.substr(5);
         }
-        argString.erase(0, pos + 1);
+        s.erase(0, pos + 1);
     }
+
+    // instruct jvm that resource can be garbage collected
+    env->ReleaseStringUTFChars(args, argString);
 
     //check to see if we can access the named pipe
     if (access(namedPipePath.c_str(), (R_OK | W_OK)) != 0) {
